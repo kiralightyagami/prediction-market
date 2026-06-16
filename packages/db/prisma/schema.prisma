@@ -14,10 +14,12 @@ datasource db {
 
 model User {
   id         String         @id @default(uuid())
-  address    String
+  address    String         @unique
   usdBalance Int
   positions  Position[]
   orders     OrderHistory[]
+
+  @@index([address])
 }
 
 model Market {
@@ -37,9 +39,11 @@ model Position {
   id       String       @id @default(uuid())
   userId   String
   marketId String
+  qty      Int
   type     PositionType
   user     User         @relation(fields: [userId], references: [id])
   market   Market       @relation(fields: [marketId], references: [id])
+  @@unique([userId, marketId, type])
 }
 
 model OrderHistory {
