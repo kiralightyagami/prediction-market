@@ -1,5 +1,6 @@
 import express from "express";
 import cors from "cors";
+import { uuid } from "uuidv4";
 import { prisma } from "db";
 import { CreateOrderSchema, type Orderbook } from "./types";
 
@@ -21,6 +22,7 @@ app.post("/buy", async (req, res) => {
     return;
   }
 
+  const originalOrderId = uuid();
   await prisma.$transaction(async (tx) => {
     const response = await tx.$queryRaw<
       {
@@ -47,7 +49,7 @@ app.post("/buy", async (req, res) => {
     const yesOrderbook: Orderbook = JSON.parse(market.yesOrderbook);
     const noOrderbook: Orderbook = JSON.parse(market.noOrderbook);
 
-    if (data.side == "yes" && data.type == "buy"){
+    if (data.side == "yes" && data.type == "buy") {
       const usd = data.qty * data.price;
       if (user.usdBalance < usd) {
         res.status(403).json({
@@ -61,17 +63,19 @@ app.post("/buy", async (req, res) => {
       const prices = Object.keys(yesOrderbook).sort(
         (a: string, b: string) => Number(a) - Number(b),
       );
-
+      // just do one bulk update rather than all this data calls
       await Promise.all(
         prices.map(async (price) => {
           if (Number(price) > data.price) {
             return;
           }
-          const { availableQty, orders } = yesOrderbook[price]!;
+          const { orders } = yesOrderbook[price]!;
 
           await Promise.all(
             orders.map(async (order) => {
-            const matchedQty = order.qty >= leftQty ? leftQty : order.qty; 
+              const matchedQty = order.qty >= leftQty ? leftQty : order.qty;
+              const reverseOrder = order.reverseOrder;
+              if (!reverseOrder) {
                 await prisma.position.update({
                   where: {
                     userId_marketId_type: {
@@ -97,11 +101,153 @@ app.post("/buy", async (req, res) => {
                     },
                   },
                 });
-
+              } else {
                 await prisma.position.update({
                   where: {
                     userId_marketId_type: {
-                      userId,
+                      userId: order.userId,
+                      marketId: data.marketId,
+                      type: "No",
+                    },
+                  },
+                  data: {
+                    qty: {
+                      increment: matchedQty,
+                    },
+                  },
+                });
+
+                await prisma.user.update({
+                  where: {
+                    id: order.userId,
+                  },
+                  data: {
+                    usdBalance: {
+                      decrement: (100 - Number(price)) * matchedQty,
+                    },
+                  },
+                });
+              }
+
+              await prisma.position.update({
+                where: {
+                  userId_marketId_type: {
+                    userId,
+                    marketId: data.marketId,
+                    type: "Yes",
+                  },
+                },
+                data: {
+                  qty: {
+                    increment: matchedQty,
+                  },
+                },
+              });
+
+              await prisma.user.update({
+                where: {
+                  id: userId,
+                },
+                data: {
+                  usdBalance: {
+                    decrement: Number(price) * matchedQty,
+                  },
+                },
+              });
+
+              leftQty -= matchedQty;
+              order.filledQty += matchedQty;
+              yesOrderbook[price]!.availableQty -= matchedQty;
+            }),
+          );
+        }),
+      );
+
+      if (leftQty) {
+      const oppositePrice = 100 - data.price;
+      if (!noOrderbook[oppositePrice]) {
+        noOrderbook[oppositePrice] = { availableQty: 0, orders: [] };
+      }
+
+      noOrderbook[oppositePrice]!.availableQty += leftQty;
+      noOrderbook[oppositePrice]!.orders.push({
+        qty: leftQty,
+        userId,
+        filledQty: 0,
+        originalOrderId: originalOrderId,
+        reverseOrder: true,
+      });
+    }
+  }
+
+    if (data.side == "yes" && data.type == "sell") {
+      const buyPrice = 100 - data.price;
+      const buyQty = data.qty;
+
+      const userPosition = await prisma.position.findFirst({
+        where: {
+          userId: userId,
+          marketId: data.marketId,
+          type: "Yes",
+        },
+      });
+
+      if (!userPosition) {
+        return;
+      }
+
+      if (userPosition.qty < data.qty) {
+        return;
+      }
+
+      let leftQty = data.qty;
+      
+      const prices = Object.keys(noOrderbook).sort(
+        (a: string, b: string) => Number(a) - Number(b),
+      );
+      // just do one bulk update rather than all this data calls
+      await Promise.all(
+        prices.map(async (price) => {
+          if (Number(price) > buyPrice) {
+            return;
+          }
+          const { orders } = noOrderbook[price]!;
+
+          await Promise.all(
+            orders.map(async (order) => {
+              const matchedQty = order.qty >= leftQty ? leftQty : order.qty;
+              const reverseOrder = order.reverseOrder;
+              if (!reverseOrder) {
+                await prisma.position.update({
+                  where: {
+                    userId_marketId_type: {
+                      userId: order.userId,
+                      marketId: data.marketId,
+                      type: "No",
+                    },
+                  },
+                  data: {
+                    qty: {
+                      decrement: matchedQty,
+                    },
+                  },
+                });
+
+                await prisma.user.update({
+                  where: {
+                    id: order.userId,
+                  },
+                  data: {
+                    usdBalance: {
+                      increment: Number(price) * matchedQty,
+                    },
+                  },
+                });
+              } else {
+                await prisma.position.update({
+                  where: {
+                    userId_marketId_type: {
+                      userId: order.userId,
                       marketId: data.marketId,
                       type: "Yes",
                     },
@@ -115,26 +261,75 @@ app.post("/buy", async (req, res) => {
 
                 await prisma.user.update({
                   where: {
-                    id: userId,
+                    id: order.userId,
                   },
                   data: {
                     usdBalance: {
-                      decrement: Number(price) * matchedQty,
+                      decrement: (100 - Number(price)) * matchedQty,
                     },
                   },
                 });
+              }
 
-                leftQty -= matchedQty;
+              await prisma.position.update({
+                where: {
+                  userId_marketId_type: {
+                    userId,
+                    marketId: data.marketId,
+                    type: "Yes",
+                  },
+                },
+                data: {
+                  qty: {
+                    decrement: matchedQty,
+                  },
+                },
+              });
 
+              await prisma.user.update({
+                where: {
+                  id: userId,
+                },
+                data: {
+                  usdBalance: {
+                    increment: Number(price) * matchedQty,
+                  },
+                },
+              });
+
+              leftQty -= matchedQty;
+              order.filledQty += matchedQty;
+              noOrderbook[price]!.availableQty -= matchedQty;
             }),
           );
         }),
       );
+
+      if (leftQty) {
+        if (!yesOrderbook[data.price]) {
+          yesOrderbook[data.price] = { availableQty: 0, orders: [] };
+        }
+  
+        yesOrderbook[data.price]!.availableQty += leftQty;
+        yesOrderbook[data.price]!.orders.push({
+          qty: leftQty,
+          userId,
+          filledQty: 0,
+          originalOrderId: originalOrderId,
+          reverseOrder: true,
+        });
+      }
     }
 
-    if (data.side == "yes" && data.type == "sell"){
-
-    }
+    tx.market.update({
+      data: {
+        yesOrderbook: JSON.stringify(yesOrderbook),
+        noOrderbook: JSON.stringify(noOrderbook),
+      },
+      where: {
+        id: data.marketId,
+      },
+    });
   });
 });
 

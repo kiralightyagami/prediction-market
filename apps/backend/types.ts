@@ -10,5 +10,5 @@ export const CreateOrderSchema = z.object({
 
 export type Orderbook = {[key: string]:{
     availableQty: number,
-    orders: { userId: string, qty: number, filledQty: number, originalOrderId: string }[]
+    orders: { userId: string, qty: number, filledQty: number, originalOrderId: string, reverseOrder: boolean }[]
 }}
