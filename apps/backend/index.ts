@@ -420,6 +420,19 @@ app.post("/split", async (req, res) => {
         },
       },
     });
+
+    await tx.orderHistory.create({
+      data: {
+        orderType: "Split",
+        userId,
+        price: 0,
+        qty: data.amount,
+        marketId: data.marketId,
+      },
+    });
+    res.json({
+      message: "Split done",
+    });
   });
 });
 
