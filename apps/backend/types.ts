@@ -12,3 +12,8 @@ export type Orderbook = {[key: string]:{
     availableQty: number,
     orders: { userId: string, qty: number, filledQty: number, originalOrderId: string, reverseOrder: boolean }[]
 }}
+
+export const SplitSchema = z.object({
+    marketId: z.string(),
+    amount: z.number(),
+})

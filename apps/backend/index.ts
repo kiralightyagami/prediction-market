@@ -2,7 +2,7 @@ import express from "express";
 import cors from "cors";
 import { uuid } from "uuidv4";
 import { prisma } from "db";
-import { CreateOrderSchema, type Orderbook } from "./types";
+import { CreateOrderSchema, SplitSchema, type Orderbook } from "./types";
 
 const app = express();
 
@@ -12,7 +12,7 @@ app.use(cors());
 
 //todo add auth middleware
 
-app.post("/buy", async (req, res) => {
+app.post("/order", async (req, res) => {
   const { success, data } = CreateOrderSchema.safeParse(req.body);
   const userId = "1"; // add auth middleware and fetch user id
   if (!success) {
@@ -164,21 +164,21 @@ app.post("/buy", async (req, res) => {
       );
 
       if (leftQty) {
-      const oppositePrice = 100 - data.price;
-      if (!noOrderbook[oppositePrice]) {
-        noOrderbook[oppositePrice] = { availableQty: 0, orders: [] };
-      }
+        const oppositePrice = 100 - data.price;
+        if (!noOrderbook[oppositePrice]) {
+          noOrderbook[oppositePrice] = { availableQty: 0, orders: [] };
+        }
 
-      noOrderbook[oppositePrice]!.availableQty += leftQty;
-      noOrderbook[oppositePrice]!.orders.push({
-        qty: leftQty,
-        userId,
-        filledQty: 0,
-        originalOrderId: originalOrderId,
-        reverseOrder: true,
-      });
+        noOrderbook[oppositePrice]!.availableQty += leftQty;
+        noOrderbook[oppositePrice]!.orders.push({
+          qty: leftQty,
+          userId,
+          filledQty: 0,
+          originalOrderId: originalOrderId,
+          reverseOrder: true,
+        });
+      }
     }
-  }
 
     if (data.side == "yes" && data.type == "sell") {
       const buyPrice = 100 - data.price;
@@ -201,7 +201,7 @@ app.post("/buy", async (req, res) => {
       }
 
       let leftQty = data.qty;
-      
+
       const prices = Object.keys(noOrderbook).sort(
         (a: string, b: string) => Number(a) - Number(b),
       );
@@ -309,7 +309,7 @@ app.post("/buy", async (req, res) => {
         if (!yesOrderbook[data.price]) {
           yesOrderbook[data.price] = { availableQty: 0, orders: [] };
         }
-  
+
         yesOrderbook[data.price]!.availableQty += leftQty;
         yesOrderbook[data.price]!.orders.push({
           qty: leftQty,
@@ -320,6 +320,8 @@ app.post("/buy", async (req, res) => {
         });
       }
     }
+
+    // todo complete no checks
 
     tx.market.update({
       data: {
@@ -333,9 +335,88 @@ app.post("/buy", async (req, res) => {
   });
 });
 
-app.post("/sell", (req, res) => {});
+app.post("/split", async (req, res) => {
+  const { data, success } = SplitSchema.safeParse(req.body);
+  const userId: string = "1"; //use auth middleware and fetch userid
 
-app.post("/split", (req, res) => {});
+  if (!success) {
+    res.status(411).json({
+      message: "not valid inputs",
+    });
+    return;
+  }
+  const marketId = data?.marketId;
+  await prisma.$transaction(async (tx) => {
+    const userResponse = await tx.$queryRaw<
+      { id: string; address: string; usdBalance: number }[]
+    >`SELECT * FROM "User" WHERE id=${userId} FOR UPDATE;`;
+    const user = userResponse[0];
+
+    if (!user) {
+      return;
+    }
+
+    if (user.usdBalance < data.amount) {
+      res.status(403).json({
+        message: "you are not allowed",
+      });
+      return;
+    }
+
+    await tx.user.update({
+      where: {
+        id: userId,
+      },
+      data: {
+        usdBalance: {
+          decrement: data.amount,
+        },
+      },
+    });
+
+    await tx.position.upsert({
+      where: {
+        userId_marketId_type: {
+          marketId,
+          userId,
+          type: "Yes",
+        },
+      },
+      create: {
+        marketId,
+        userId,
+        type: "Yes",
+        qty: data.amount,
+      },
+      update: {
+        qty: {
+          increment: data.amount,
+        },
+      },
+    });
+
+    await tx.position.upsert({
+      where: {
+        userId_marketId_type: {
+          marketId,
+          userId,
+          type: "No",
+        },
+      },
+      create: {
+        marketId,
+        userId,
+        type: "No",
+        qty: data.amount,
+      },
+      update: {
+        qty: {
+          increment: data.amount,
+        },
+      },
+    });
+  });
+});
 
 app.post("/merge", (req, res) => {});
 
