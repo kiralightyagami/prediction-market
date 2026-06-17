@@ -538,10 +538,43 @@ app.post("/merge", async (req, res) => {
   });
 });
 
-app.get("/balance", (req, res) => {});
+app.get("/balance", async (req, res) => {
+  const userId = "1"
+  const user = await prisma.user.findFirst({
+    where: {
+      id: userId
+    }
+  })
 
-app.get("/position", (req, res) => {});
+  res.json({
+    balance: user?.usdBalance
+  })
+});
 
-app.post("/history", (req, res) => {});
+app.get("/positions", async (req, res) => {
+  const userId = "1"
+  const positions = await prisma.position.findMany({
+    where: {
+      id: userId
+    }
+  })
+
+  res.json({
+    positions
+  })
+});
+
+app.post("/history", async (req, res) => {
+  const userId = "1"
+  const history = await prisma.orderHistory.findMany({
+    where: {
+      id: userId
+    }
+  })
+
+  res.json({
+    history
+  })
+});
 
 app.listen(8080);
