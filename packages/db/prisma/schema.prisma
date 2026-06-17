@@ -69,5 +69,5 @@ enum OrderType {
   Buy
   Sell
   Split
-  Merges
+  Merge
 }

@@ -17,3 +17,8 @@ export const SplitSchema = z.object({
     marketId: z.string(),
     amount: z.number(),
 })
+
+export const MergeSchema = z.object({
+    marketId: z.string(),
+    amount: z.number(),
+})

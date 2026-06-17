@@ -2,7 +2,12 @@ import express from "express";
 import cors from "cors";
 import { uuid } from "uuidv4";
 import { prisma } from "db";
-import { CreateOrderSchema, SplitSchema, type Orderbook } from "./types";
+import {
+  CreateOrderSchema,
+  MergeSchema,
+  SplitSchema,
+  type Orderbook,
+} from "./types";
 
 const app = express();
 
@@ -418,7 +423,107 @@ app.post("/split", async (req, res) => {
   });
 });
 
-app.post("/merge", (req, res) => {});
+app.post("/merge", async (req, res) => {
+  const { data, success } = MergeSchema.safeParse(req.body);
+  const userId: string = "1"; //use auth middleware and fetch userid
+
+  if (!success) {
+    res.status(411).json({
+      message: "not valid inputs",
+    });
+    return;
+  }
+  const marketId = data?.marketId;
+  await prisma.$transaction(async (tx) => {
+    const userResponse = await tx.$queryRaw<
+      { id: string; address: string; usdBalance: number }[]
+    >`SELECT * FROM "User" WHERE id=${userId} FOR UPDATE;`;
+    const user = userResponse[0];
+
+    if (!user) {
+      return;
+    }
+
+    const yesPosition = await tx.position.findFirst({
+      where: {
+        userId,
+        marketId,
+        type: "Yes",
+      },
+    });
+
+    const noPosition = await tx.position.findFirst({
+      where: {
+        userId,
+        marketId,
+        type: "No",
+      },
+    });
+
+    if (!yesPosition || yesPosition.qty < data.amount) {
+      return;
+    }
+
+    if (!noPosition || noPosition.qty < data.amount) {
+      return;
+    }
+
+    await tx.position.update({
+      where: {
+        userId_marketId_type: {
+          userId,
+          marketId,
+          type: "Yes",
+        },
+      },
+      data: {
+        qty: {
+          decrement: data.amount,
+        },
+      },
+    });
+
+    await tx.position.update({
+      where: {
+        userId_marketId_type: {
+          userId,
+          marketId,
+          type: "No",
+        },
+      },
+      data: {
+        qty: {
+          decrement: data.amount,
+        },
+      },
+    });
+
+    await tx.user.update({
+      where: {
+        id: userId,
+      },
+      data: {
+        usdBalance: {
+          increment: data.amount,
+        },
+      },
+    });
+
+    await tx.orderHistory.create({
+      data: {
+        orderType: "Merge",
+        userId,
+        price: 0,
+        qty: data.amount,
+        marketId: data.marketId,
+      },
+    });
+
+    res.json({
+      message: "Merge done",
+    });
+  });
+});
 
 app.get("/balance", (req, res) => {});
 
