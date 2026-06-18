@@ -1,36 +1,15 @@
-"use client";
-import { createClient } from "@supabase/supabase-js";
-import { useState, useEffect } from "react";
+"use client"
+import { useSupabase } from "./hooks/useSupabase";
+import { useUser } from "./hooks/useUser";
 
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_KEY,
-);
 
 export default function Home() {
   // create a Component
-  const [claims, setClaims] = useState(null);
-
-  useEffect(() => {
-    
-    supabase.auth.getClaims().then(({ data: { claims } }) => {
-      setClaims(claims);
-    });
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange(() => {
-      supabase.auth.getClaims().then(({ data: { claims } }) => {
-        setClaims(claims)
-      })
-    })
-
-    return () => subscription.unsubscribe()
-  }, []);
-
+  const {claims}= useUser();
+  const supabase = useSupabase();
   return (
     <div>
-      <button
+      {!claims && <button
         onClick={async () => {
           await supabase.auth.signInWithWeb3({
             chain: "solana",
@@ -40,6 +19,12 @@ export default function Home() {
       >
         Signin with solana
       </button>
+      }
+      {claims && <button onClick={async () => {
+        await supabase.auth.signOut()
+      }}>
+        logout
+        </button>}
     </div>
   );
 }
