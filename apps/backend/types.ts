@@ -22,3 +22,11 @@ export const MergeSchema = z.object({
     marketId: z.string(),
     amount: z.number(),
 })
+
+declare global {
+    namespace Express {
+      export interface Request {
+        userId?: string;
+      }
+    }
+}

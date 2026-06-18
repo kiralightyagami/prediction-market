@@ -8,6 +8,7 @@ import {
   SplitSchema,
   type Orderbook,
 } from "./types";
+import { authMiddleware } from "./middleware";
 
 const app = express();
 
@@ -15,11 +16,10 @@ app.use(express.json());
 
 app.use(cors());
 
-//todo add auth middleware
 
-app.post("/order", async (req, res) => {
+app.post("/order", authMiddleware ,async (req, res) => {
   const { success, data } = CreateOrderSchema.safeParse(req.body);
-  const userId = "1"; // add auth middleware and fetch user id
+  const userId = req.userId!; // add auth middleware and fetch user id
   if (!success) {
     res.status(411).json({
       message: "Incorrect input",
@@ -340,9 +340,9 @@ app.post("/order", async (req, res) => {
   });
 });
 
-app.post("/split", async (req, res) => {
+app.post("/split", authMiddleware, async (req, res) => {
   const { data, success } = SplitSchema.safeParse(req.body);
-  const userId: string = "1"; //use auth middleware and fetch userid
+  const userId: string = req.userId!; //use auth middleware and fetch userid
 
   if (!success) {
     res.status(411).json({
@@ -436,9 +436,9 @@ app.post("/split", async (req, res) => {
   });
 });
 
-app.post("/merge", async (req, res) => {
+app.post("/merge",authMiddleware, async (req, res) => {
   const { data, success } = MergeSchema.safeParse(req.body);
-  const userId: string = "1"; //use auth middleware and fetch userid
+  const userId: string = req.userId!; //use auth middleware and fetch userid
 
   if (!success) {
     res.status(411).json({
@@ -538,8 +538,8 @@ app.post("/merge", async (req, res) => {
   });
 });
 
-app.get("/balance", async (req, res) => {
-  const userId = "1"
+app.get("/balance",authMiddleware, async (req, res) => {
+  const userId = req.userId!;
   const user = await prisma.user.findFirst({
     where: {
       id: userId
@@ -551,8 +551,8 @@ app.get("/balance", async (req, res) => {
   })
 });
 
-app.get("/positions", async (req, res) => {
-  const userId = "1"
+app.get("/positions",authMiddleware, async (req, res) => {
+  const userId = req.userId!;
   const positions = await prisma.position.findMany({
     where: {
       id: userId
@@ -564,8 +564,8 @@ app.get("/positions", async (req, res) => {
   })
 });
 
-app.post("/history", async (req, res) => {
-  const userId = "1"
+app.post("/history",authMiddleware, async (req, res) => {
+  const userId = req.userId!;
   const history = await prisma.orderHistory.findMany({
     where: {
       id: userId
