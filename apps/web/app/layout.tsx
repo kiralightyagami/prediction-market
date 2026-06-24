@@ -1,7 +1,12 @@
 import type { Metadata } from "next";
+import { Inter } from "next/font/google";
 import localFont from "next/font/local";
 import "./globals.css";
 
+const inter = Inter({
+  subsets: ["latin"],
+  variable: "--font-inter",
+});
 
 const geistSans = localFont({
   src: "./fonts/GeistVF.woff",
@@ -13,8 +18,9 @@ const geistMono = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "Polymark - Prediction Market",
-  description: "The premier prediction market.",
+  title: "Polymark — Prediction Market",
+  description:
+    "Trade live prediction markets. Buy and sell shares on real-world outcomes with transparent orderbooks.",
 };
 
 export default function RootLayout({
@@ -24,10 +30,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={`${geistSans.variable} ${geistMono.variable}`}>
-        <main className="main-content">
-          {children}
-        </main>
+      <body
+        className={`${inter.variable} ${geistSans.variable} ${geistMono.variable} font-[family-name:var(--font-inter)]`}
+      >
+        {children}
       </body>
     </html>
   );
