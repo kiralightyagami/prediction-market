@@ -2,6 +2,18 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import type { Market, Orderbook } from "../types";
 import { api } from "../api/api";
+import { Button } from "#components/ui/button";
+import { Input } from "#components/ui/input";
+import { Label } from "#components/ui/label";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "#components/ui/card";
+import { Alert, AlertDescription } from "#components/ui/alert";
+import { AlertCircle, CheckCircle2 } from "lucide-react";
+import { Tabs, TabsList, TabsTrigger } from "#components/ui/tabs";
 
 interface OrderFormProps {
   market: Market;
@@ -105,139 +117,115 @@ export function OrderForm({ market, token, onOrderPlaced }: OrderFormProps) {
     }
   };
 
-  const btnBase =
-    "min-h-[38px] rounded-[var(--radius-sm)] font-[850] cursor-pointer transition-colors duration-150";
-
   return (
-    <section className="bg-gradient-to-b from-surface-1 to-surface-0 border border-border-subtle rounded-[var(--radius-lg)] shadow-[0_18px_44px_rgba(0,0,0,0.28)] overflow-hidden">
-      {/* Header */}
-      <div className="flex justify-between items-start gap-3.5 p-4 border-b border-border-subtle">
-        <div>
-          <span className="block text-muted text-[11px] font-[850] uppercase tracking-[0.095em] mb-[7px]">
-            Trade
-          </span>
-          <h3 className="text-[17px] leading-[1.28] tracking-[-0.035em] font-semibold max-w-[250px]">
-            {market.title}
-          </h3>
-        </div>
-        <span className="text-muted text-[11px] font-[850] uppercase tracking-[0.095em]">
-          {type === "buy" ? "Buy" : "Sell"} {side.toUpperCase()}
-        </span>
-      </div>
-
-      {/* Messages */}
-      <div className="px-4">
-        {error && (
-          <div className="rounded-[var(--radius-md)] p-2.5 mt-4 text-[13px] font-[750] text-red-text bg-red-bg border border-red-border">
-            {error}
+    <Card className="w-full shadow-lg border-2 border-primary/10">
+      <CardHeader className="pb-4 border-b bg-muted/20">
+        <div className="flex justify-between items-start gap-3">
+          <div>
+            <span className="block text-muted-foreground text-[11px] font-bold uppercase tracking-widest mb-1">
+              Trade
+            </span>
+            <CardTitle className="text-lg leading-tight font-bold max-w-[250px]">
+              {market.title}
+            </CardTitle>
           </div>
+          <span className="text-primary text-[11px] font-black uppercase tracking-widest py-1 px-2 bg-primary/10 rounded-full">
+            {type === "buy" ? "Buy" : "Sell"} {side.toUpperCase()}
+          </span>
+        </div>
+      </CardHeader>
+
+      <CardContent className="pt-4">
+        {error && (
+          <Alert variant="destructive" className="mb-4">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription className="font-semibold">{error}</AlertDescription>
+          </Alert>
         )}
         {success && (
-          <div className="rounded-[var(--radius-md)] p-2.5 mt-4 text-[13px] font-[750] text-green-text-dark bg-green-bg border border-green-border">
-            {success}
-          </div>
+          <Alert className="mb-4 border-green-500/50 bg-green-500/10 text-green-600 dark:text-green-400">
+            <CheckCircle2 className="h-4 w-4 stroke-green-600 dark:stroke-green-400" />
+            <AlertDescription className="font-semibold">{success}</AlertDescription>
+          </Alert>
         )}
-      </div>
 
-      <form onSubmit={handleSubmit} className="px-4 py-4">
-        {/* Buy / Sell toggle */}
-        <div className="grid grid-cols-2 gap-[5px] mb-3 p-1 bg-surface-0 border border-border-subtle rounded-[var(--radius-md)]">
-          <button
-            type="button"
-            className={`${btnBase} ${type === "buy" ? "bg-surface-2 text-text" : "bg-transparent text-muted"}`}
-            onClick={() => setType("buy")}
-          >
-            Buy
-          </button>
-          <button
-            type="button"
-            className={`${btnBase} ${type === "sell" ? "bg-surface-2 text-text" : "bg-transparent text-muted"}`}
-            onClick={() => setType("sell")}
-          >
-            Sell
-          </button>
-        </div>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <Tabs value={type} onValueChange={(v) => setType(v as "buy" | "sell")} className="w-full">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="buy" className="font-bold">Buy</TabsTrigger>
+              <TabsTrigger value="sell" className="font-bold">Sell</TabsTrigger>
+            </TabsList>
+          </Tabs>
 
-        {/* Yes / No toggle */}
-        <div className="grid grid-cols-2 gap-[5px] mb-3 p-1 bg-surface-0 border border-border-subtle rounded-[var(--radius-md)]">
-          <button
-            type="button"
-            className={`${btnBase} ${side === "yes" ? "bg-green-bg text-green-text" : "bg-transparent text-muted"}`}
-            onClick={() => setSide("yes")}
-          >
-            Yes
-          </button>
-          <button
-            type="button"
-            className={`${btnBase} ${side === "no" ? "bg-red-bg text-red-text" : "bg-transparent text-muted"}`}
-            onClick={() => setSide("no")}
-          >
-            No
-          </button>
-        </div>
+          <Tabs value={side} onValueChange={(v) => setSide(v as "yes" | "no")} className="w-full">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="yes" className="font-bold data-[state=active]:bg-green-500 data-[state=active]:text-white">Yes</TabsTrigger>
+              <TabsTrigger value="no" className="font-bold data-[state=active]:bg-red-500 data-[state=active]:text-white">No</TabsTrigger>
+            </TabsList>
+          </Tabs>
 
-        {/* Price input */}
-        <div className="mb-3">
-          <label className="block text-muted text-xs font-[850] mb-[7px]">
-            Limit price
-          </label>
-          <input
-            type="number"
-            step="0.01"
-            min="0.01"
-            max="0.99"
-            value={price}
-            onChange={(e) => setPrice(e.target.value)}
-            required
-            className="w-full min-h-[43px] border border-border rounded-[var(--radius-md)] bg-surface-0 text-text px-3 outline-none focus:border-blue focus:shadow-[0_0_0_3px_rgba(76,141,255,0.17)] transition-all duration-150"
-          />
-        </div>
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                Limit price
+              </Label>
+              <Input
+                type="number"
+                step="0.01"
+                min="0.01"
+                max="0.99"
+                value={price}
+                onChange={(e) => setPrice(e.target.value)}
+                required
+                className="h-11 font-medium"
+              />
+            </div>
 
-        {/* Quantity input */}
-        <div className="mb-3">
-          <label className="block text-muted text-xs font-[850] mb-[7px]">
-            Quantity
-          </label>
-          <input
-            type="number"
-            min="1"
-            value={qty}
-            onChange={(e) => setQty(e.target.value)}
-            required
-            className="w-full min-h-[43px] border border-border rounded-[var(--radius-md)] bg-surface-0 text-text px-3 outline-none focus:border-blue focus:shadow-[0_0_0_3px_rgba(76,141,255,0.17)] transition-all duration-150"
-          />
-        </div>
-
-        {/* Summary */}
-        <div className="grid grid-cols-2 gap-2 my-3">
-          <div className="bg-surface-0 border border-border-subtle rounded-[var(--radius-md)] p-3">
-            <span className="block text-muted text-[11px] font-[850] uppercase tracking-[0.095em] mb-[7px]">
-              Suggested
-            </span>
-            <strong className="text-[17px] tracking-[-0.02em]">
-              {formatPrice(suggestedPrice)}
-            </strong>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                Quantity
+              </Label>
+              <Input
+                type="number"
+                min="1"
+                value={qty}
+                onChange={(e) => setQty(e.target.value)}
+                required
+                className="h-11 font-medium"
+              />
+            </div>
           </div>
-          <div className="bg-surface-0 border border-border-subtle rounded-[var(--radius-md)] p-3">
-            <span className="block text-muted text-[11px] font-[850] uppercase tracking-[0.095em] mb-[7px]">
-              Order value
-            </span>
-            <strong className="text-[17px] tracking-[-0.02em]">
-              ${total.toFixed(2)}
-            </strong>
-          </div>
-        </div>
 
-        <button
-          className="w-full min-h-[46px] rounded-[var(--radius-md)] bg-blue text-white font-extrabold cursor-pointer transition-all duration-150 hover:bg-blue-hover hover:-translate-y-0.5 disabled:opacity-55 disabled:cursor-not-allowed disabled:hover:translate-y-0"
-          type="submit"
-          disabled={loading || !token}
-        >
-          {loading
-            ? "Processing..."
-            : `${type === "buy" ? "Buy" : "Sell"} ${side.toUpperCase()}`}
-        </button>
-      </form>
-    </section>
+          <div className="grid grid-cols-2 gap-3 mt-4">
+            <div className="bg-muted/50 border rounded-lg p-3">
+              <span className="block text-muted-foreground text-[10px] font-bold uppercase tracking-widest mb-1">
+                Suggested
+              </span>
+              <strong className="text-lg">
+                {formatPrice(suggestedPrice)}
+              </strong>
+            </div>
+            <div className="bg-muted/50 border rounded-lg p-3">
+              <span className="block text-muted-foreground text-[10px] font-bold uppercase tracking-widest mb-1">
+                Order value
+              </span>
+              <strong className="text-lg text-primary">
+                ${total.toFixed(2)}
+              </strong>
+            </div>
+          </div>
+
+          <Button
+            type="submit"
+            disabled={loading || !token}
+            className="w-full h-12 text-base font-bold mt-2"
+          >
+            {loading
+              ? "Processing..."
+              : `${type === "buy" ? "Buy" : "Sell"} ${side.toUpperCase()}`}
+          </Button>
+        </form>
+      </CardContent>
+    </Card>
   );
 }

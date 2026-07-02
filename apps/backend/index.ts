@@ -5,6 +5,8 @@ import { prisma } from "db";
 import {
   CreateOrderSchema,
   MergeSchema,
+  OfframpSchema,
+  OnrampSchema,
   SplitSchema,
   type Orderbook,
 } from "./types";
@@ -15,6 +17,24 @@ const app = express();
 app.use(express.json());
 
 app.use(cors());
+
+function parseOrderbook(orderbook: unknown): Orderbook {
+  if (typeof orderbook === "string") {
+    return JSON.parse(orderbook);
+  }
+  if (orderbook && typeof orderbook === "object") {
+    return orderbook as Orderbook;
+  }
+  return {};
+}
+
+// Get all markets
+app.get("/markets", async (req, res) => {
+  const markets = await prisma.market.findMany();
+  res.json({
+    markets
+  });
+});
 
 app.post("/order", authMiddleware, async (req, res) => {
   const { success, data } = CreateOrderSchema.safeParse(req.body);
@@ -27,585 +47,551 @@ app.post("/order", authMiddleware, async (req, res) => {
   }
 
   const originalOrderId = uuid();
-  await prisma.$transaction(async (tx) => {
-    const response = await tx.$queryRaw<
-      {
-        yesOrderbook: string;
-        noOrderbook: string;
-        id: string;
-        totalQty: number;
-      }[]
-    >`SELECT * FROM "Market" WHERE id =${data.marketId} FOR UPDATE;`;
-    const userResponse = await tx.$queryRaw<
-      { id: string; address: string; usdBalance: number }[]
-    >`SELECT * FROM "User" WHERE id =${userId} FOR UPDATE;`;
-    const market = response[0];
-    const user = userResponse[0];
 
-    if (!user) {
-      return;
-    }
+  try {
+    await prisma.$transaction(async tx => {
+      const response = await tx.$queryRaw<{ yesOrderbook: unknown, noOrderbook: unknown, id: string, totalQty: number }[]>`SELECT * FROM "Market" WHERE id=${data.marketId} FOR UPDATE;`;
+      const userResponse = await tx.$queryRaw<{ id: string, address: string, usdBalance: number }[]>`SELECT * FROM "User" WHERE id=${userId} FOR UPDATE;`;
 
-    if (!market) {
-      return;
-    }
-
-    const yesOrderbook: Orderbook = JSON.parse(market.yesOrderbook);
-    const noOrderbook: Orderbook = JSON.parse(market.noOrderbook);
-
-    if (data.side == "yes" && data.type == "buy") {
-      const usd = data.qty * data.price;
-      if (user.usdBalance < usd) {
-        res.status(403).json({
-          message: "not enough balance",
-        });
-        return;
+      const user = userResponse[0];
+      if (!user) {
+        throw new Error("User not found");
+      }
+      const market = response[0];
+      if (!market) {
+        throw new Error("Market not found");
       }
 
-      let leftQty = data.qty;
+      const yesOrderbook = parseOrderbook(market.yesOrderbook);
+      const noOrderbook = parseOrderbook(market.noOrderbook);
 
-      const prices = Object.keys(yesOrderbook).sort(
-        (a: string, b: string) => Number(a) - Number(b),
-      );
-      // just do one bulk update rather than all this data calls
-      await Promise.all(
-        prices.map(async (price) => {
+      if (data.side == "yes" && data.type == "buy") {
+        const usd = data.qty * data.price;
+        if (user.usdBalance < usd) {
+          throw new Error("Insufficient USD balance");
+        }
+
+        let leftQty = data.qty;
+
+        const prices = Object.keys(yesOrderbook).sort((a: string, b: string) => Number(a) - Number(b));
+
+        for (const price of prices) {
           if (Number(price) > data.price) {
-            return;
+            continue;
           }
           const { orders } = yesOrderbook[price]!;
 
-          await Promise.all(
-            orders.map(async (order) => {
-              const matchedQty = order.qty >= leftQty ? leftQty : order.qty;
-              const reverseOrder = order.reverseOrder;
-              if (!reverseOrder) {
-                await prisma.position.update({
-                  where: {
-                    userId_marketId_type: {
-                      userId: order.userId,
-                      marketId: data.marketId,
-                      type: "Yes",
-                    },
-                  },
-                  data: {
-                    qty: {
-                      decrement: matchedQty,
-                    },
-                  },
-                });
+          for (const order of orders) {
+            if (leftQty <= 0) break;
 
-                await prisma.user.update({
-                  where: {
-                    id: order.userId,
-                  },
-                  data: {
-                    usdBalance: {
-                      increment: Number(price) * matchedQty,
-                    },
-                  },
-                });
-              } else {
-                await prisma.position.update({
-                  where: {
-                    userId_marketId_type: {
-                      userId: order.userId,
-                      marketId: data.marketId,
-                      type: "No",
-                    },
-                  },
-                  data: {
-                    qty: {
-                      increment: matchedQty,
-                    },
-                  },
-                });
-
-                await prisma.user.update({
-                  where: {
-                    id: order.userId,
-                  },
-                  data: {
-                    usdBalance: {
-                      decrement: (100 - Number(price)) * matchedQty,
-                    },
-                  },
-                });
-              }
-
-              await prisma.position.update({
+            const matchedQty = order.qty >= leftQty ? leftQty : order.qty;
+            const reverseOrder = order.reverseOrder;
+            if (!reverseOrder) {
+              await tx.position.update({
                 where: {
                   userId_marketId_type: {
-                    userId,
+                    userId: order.userId,
                     marketId: data.marketId,
-                    type: "Yes",
-                  },
+                    type: "Yes"
+                  }
                 },
                 data: {
                   qty: {
-                    increment: matchedQty,
-                  },
+                    decrement: matchedQty
+                  }
                 },
-              });
-
-              await prisma.user.update({
+              })
+              await tx.user.update({
                 where: {
-                  id: userId,
+                  id: order.userId
                 },
                 data: {
                   usdBalance: {
-                    decrement: Number(price) * matchedQty,
-                  },
+                    increment: Number(price) * matchedQty
+                  }
+                }
+              })
+            } else {
+              await tx.position.update({
+                where: {
+                  userId_marketId_type: {
+                    userId: order.userId,
+                    marketId: data.marketId,
+                    type: "No"
+                  }
                 },
-              });
+                data: {
+                  qty: {
+                    increment: matchedQty
+                  }
+                },
+              })
+              await tx.user.update({
+                where: {
+                  id: order.userId
+                },
+                data: {
+                  usdBalance: {
+                    decrement: (100 - Number(price)) * matchedQty
+                  }
+                }
+              })
+            }
+            await tx.position.upsert({
+              where: {
+                userId_marketId_type: {
+                  userId,
+                  marketId: data.marketId,
+                  type: "Yes"
+                }
+              },
+              update: {
+                qty: {
+                  increment: matchedQty
+                }
+              },
+              create: {
+                userId,
+                marketId: data.marketId,
+                type: "Yes",
+                qty: matchedQty
+              }
+            })
 
-              leftQty -= matchedQty;
-              order.filledQty += matchedQty;
-              yesOrderbook[price]!.availableQty -= matchedQty;
-            }),
-          );
-        }),
-      );
+            await tx.user.update({
+              where: {
+                id: userId
+              },
+              data: {
+                usdBalance: {
+                  decrement: Number(price) * matchedQty
+                }
+              }
+            })
 
-      if (leftQty) {
-        const oppositePrice = 100 - data.price;
-        if (!noOrderbook[oppositePrice]) {
-          noOrderbook[oppositePrice] = { availableQty: 0, orders: [] };
+            leftQty -= matchedQty;
+            order.filledQty += matchedQty;
+            yesOrderbook[price]!.availableQty -= matchedQty;
+          }
         }
 
-        noOrderbook[oppositePrice]!.availableQty += leftQty;
-        noOrderbook[oppositePrice]!.orders.push({
-          qty: leftQty,
-          userId,
-          filledQty: 0,
-          originalOrderId: originalOrderId,
-          reverseOrder: true,
+        if (leftQty > 0) {
+          const oppositePrice = 100 - data.price;
+          if (!noOrderbook[oppositePrice]) {
+            noOrderbook[oppositePrice] = { availableQty: 0, orders: [] };
+          }
+
+          noOrderbook[oppositePrice]!.availableQty += leftQty;
+          noOrderbook[oppositePrice]!.orders.push({ qty: leftQty, userId, filledQty: 0, originalOrderId, reverseOrder: true });
+        }
+      }
+
+      if (data.side == "yes" && data.type == "sell") {
+        const buyPrice = 100 - data.price;
+
+        const userPosition = await tx.position.findFirst({
+          where: {
+            userId: userId,
+            marketId: data.marketId,
+            type: "Yes"
+          }
         });
-      }
-    }
 
-    if (data.side == "yes" && data.type == "sell") {
-      const buyPrice = 100 - data.price;
-      const buyQty = data.qty;
+        if (!userPosition || userPosition.qty < data.qty) {
+          throw new Error("Insufficient Yes position");
+        }
 
-      const userPosition = await prisma.position.findFirst({
-        where: {
-          userId: userId,
-          marketId: data.marketId,
-          type: "Yes",
-        },
-      });
+        let leftQty = data.qty;
 
-      if (!userPosition) {
-        return;
-      }
+        const prices = Object.keys(noOrderbook).sort((a: string, b: string) => Number(a) - Number(b));
 
-      if (userPosition.qty < data.qty) {
-        return;
-      }
-
-      let leftQty = data.qty;
-
-      const prices = Object.keys(noOrderbook).sort(
-        (a: string, b: string) => Number(a) - Number(b),
-      );
-      // just do one bulk update rather than all this data calls
-      await Promise.all(
-        prices.map(async (price) => {
+        for (const price of prices) {
           if (Number(price) > buyPrice) {
-            return;
+            continue;
           }
           const { orders } = noOrderbook[price]!;
 
-          await Promise.all(
-            orders.map(async (order) => {
-              const matchedQty = order.qty >= leftQty ? leftQty : order.qty;
-              const reverseOrder = order.reverseOrder;
-              if (!reverseOrder) {
-                await prisma.position.update({
-                  where: {
-                    userId_marketId_type: {
-                      userId: order.userId,
-                      marketId: data.marketId,
-                      type: "No",
-                    },
-                  },
-                  data: {
-                    qty: {
-                      decrement: matchedQty,
-                    },
-                  },
-                });
+          for (const order of orders) {
+            if (leftQty <= 0) break;
 
-                await prisma.user.update({
-                  where: {
-                    id: order.userId,
-                  },
-                  data: {
-                    usdBalance: {
-                      increment: Number(price) * matchedQty,
-                    },
-                  },
-                });
-              } else {
-                await prisma.position.update({
-                  where: {
-                    userId_marketId_type: {
-                      userId: order.userId,
-                      marketId: data.marketId,
-                      type: "Yes",
-                    },
-                  },
-                  data: {
-                    qty: {
-                      increment: matchedQty,
-                    },
-                  },
-                });
-
-                await prisma.user.update({
-                  where: {
-                    id: order.userId,
-                  },
-                  data: {
-                    usdBalance: {
-                      decrement: (100 - Number(price)) * matchedQty,
-                    },
-                  },
-                });
-              }
-
-              await prisma.position.update({
+            const matchedQty = order.qty >= leftQty ? leftQty : order.qty;
+            const reverseOrder = order.reverseOrder;
+            if (!reverseOrder) {
+              await tx.position.update({
                 where: {
                   userId_marketId_type: {
-                    userId,
+                    userId: order.userId,
                     marketId: data.marketId,
-                    type: "Yes",
-                  },
+                    type: "No"
+                  }
                 },
                 data: {
                   qty: {
-                    decrement: matchedQty,
-                  },
+                    decrement: matchedQty
+                  }
                 },
-              });
-
-              await prisma.user.update({
+              })
+              await tx.user.update({
                 where: {
-                  id: userId,
+                  id: order.userId
                 },
                 data: {
                   usdBalance: {
-                    increment: Number(price) * matchedQty,
-                  },
+                    increment: Number(price) * matchedQty
+                  }
+                }
+              })
+            } else {
+              await tx.position.update({
+                where: {
+                  userId_marketId_type: {
+                    userId: order.userId,
+                    marketId: data.marketId,
+                    type: "Yes"
+                  }
                 },
-              });
-
-              leftQty -= matchedQty;
-              order.filledQty += matchedQty;
-              noOrderbook[price]!.availableQty -= matchedQty;
-            }),
-          );
-        }),
-      );
-
-      if (leftQty) {
-        if (!yesOrderbook[data.price]) {
-          yesOrderbook[data.price] = { availableQty: 0, orders: [] };
-        }
-
-        yesOrderbook[data.price]!.availableQty += leftQty;
-        yesOrderbook[data.price]!.orders.push({
-          qty: leftQty,
-          userId,
-          filledQty: 0,
-          originalOrderId: originalOrderId,
-          reverseOrder: true,
-        });
-      }
-    }
-
-    if (data.side == "no" && data.type == "buy") {
-      const usd = data.qty * data.price;
-      if (user.usdBalance < usd) {
-        return;
-      }
-
-      let leftQty = data.qty;
-
-      const prices = Object.keys(noOrderbook).sort(
-        (a: string, b: string) => Number(a) - Number(b),
-      );
-
-      for (const price of prices) {
-        if (Number(price) > data.price) {
-          continue;
-        }
-        const { orders } = noOrderbook[price]!;
-
-        for (const order of orders) {
-          if (leftQty <= 0) break;
-
-          const matchedQty = order.qty >= leftQty ? leftQty : order.qty;
-          const reverseOrder = order.reverseOrder;
-          if (!reverseOrder) {
+                data: {
+                  qty: {
+                    increment: matchedQty
+                  }
+                },
+              })
+              await tx.user.update({
+                where: {
+                  id: order.userId
+                },
+                data: {
+                  usdBalance: {
+                    decrement: (100 - Number(price)) * matchedQty
+                  }
+                }
+              })
+            }
             await tx.position.update({
               where: {
                 userId_marketId_type: {
-                  userId: order.userId,
+                  userId,
                   marketId: data.marketId,
-                  type: "No",
-                },
+                  type: "Yes"
+                }
               },
               data: {
                 qty: {
-                  decrement: matchedQty,
-                },
+                  decrement: matchedQty
+                }
               },
-            });
+            })
+
             await tx.user.update({
               where: {
-                id: order.userId,
+                id: userId
               },
               data: {
                 usdBalance: {
-                  increment: Number(price) * matchedQty,
-                },
-              },
-            });
-          } else {
-            await tx.position.update({
-              where: {
-                userId_marketId_type: {
-                  userId: order.userId,
-                  marketId: data.marketId,
-                  type: "Yes",
-                },
-              },
-              data: {
-                qty: {
-                  increment: matchedQty,
-                },
-              },
-            });
-            await tx.user.update({
-              where: {
-                id: order.userId,
-              },
-              data: {
-                usdBalance: {
-                  decrement: (100 - Number(price)) * matchedQty,
-                },
-              },
-            });
+                  increment: Number(price) * matchedQty
+                }
+              }
+            })
+
+            leftQty -= matchedQty;
+            order.filledQty += matchedQty;
+            noOrderbook[price]!.availableQty -= matchedQty;
           }
-          await tx.position.upsert({
-            where: {
-              userId_marketId_type: {
+        }
+
+        if (leftQty > 0) {
+          if (!yesOrderbook[data.price]) {
+            yesOrderbook[data.price] = { availableQty: 0, orders: [] };
+          }
+
+          yesOrderbook[data.price]!.availableQty += leftQty;
+          yesOrderbook[data.price]!.orders.push({ qty: leftQty, userId, filledQty: 0, originalOrderId, reverseOrder: false });
+        }
+      }
+
+      if (data.side == "no" && data.type == "buy") {
+        const usd = data.qty * data.price;
+        if (user.usdBalance < usd) {
+          throw new Error("Insufficient USD balance");
+        }
+
+        let leftQty = data.qty;
+
+        const prices = Object.keys(noOrderbook).sort((a: string, b: string) => Number(a) - Number(b));
+
+        for (const price of prices) {
+          if (Number(price) > data.price) {
+            continue;
+          }
+          const { orders } = noOrderbook[price]!;
+
+          for (const order of orders) {
+            if (leftQty <= 0) break;
+
+            const matchedQty = order.qty >= leftQty ? leftQty : order.qty;
+            const reverseOrder = order.reverseOrder;
+            if (!reverseOrder) {
+              await tx.position.update({
+                where: {
+                  userId_marketId_type: {
+                    userId: order.userId,
+                    marketId: data.marketId,
+                    type: "No"
+                  }
+                },
+                data: {
+                  qty: {
+                    decrement: matchedQty
+                  }
+                },
+              })
+              await tx.user.update({
+                where: {
+                  id: order.userId
+                },
+                data: {
+                  usdBalance: {
+                    increment: Number(price) * matchedQty
+                  }
+                }
+              })
+            } else {
+              await tx.position.update({
+                where: {
+                  userId_marketId_type: {
+                    userId: order.userId,
+                    marketId: data.marketId,
+                    type: "Yes"
+                  }
+                },
+                data: {
+                  qty: {
+                    increment: matchedQty
+                  }
+                },
+              })
+              await tx.user.update({
+                where: {
+                  id: order.userId
+                },
+                data: {
+                  usdBalance: {
+                    decrement: (100 - Number(price)) * matchedQty
+                  }
+                }
+              })
+            }
+            await tx.position.upsert({
+              where: {
+                userId_marketId_type: {
+                  userId,
+                  marketId: data.marketId,
+                  type: "No"
+                }
+              },
+              update: {
+                qty: {
+                  increment: matchedQty
+                }
+              },
+              create: {
                 userId,
                 marketId: data.marketId,
                 type: "No",
-              },
-            },
-            update: {
-              qty: {
-                increment: matchedQty,
-              },
-            },
-            create: {
-              userId,
-              marketId: data.marketId,
-              type: "No",
-              qty: matchedQty,
-            },
-          });
+                qty: matchedQty
+              }
+            })
 
-          await tx.user.update({
-            where: {
-              id: userId,
-            },
-            data: {
-              usdBalance: {
-                decrement: Number(price) * matchedQty,
-              },
-            },
-          });
-
-          leftQty -= matchedQty;
-          order.filledQty += matchedQty;
-          noOrderbook[price]!.availableQty -= matchedQty;
-        }
-      }
-
-      if (leftQty > 0) {
-        const oppositePrice = 100 - data.price;
-        if (!yesOrderbook[oppositePrice]) {
-          yesOrderbook[oppositePrice] = { availableQty: 0, orders: [] };
-        }
-
-        yesOrderbook[oppositePrice]!.availableQty += leftQty;
-        yesOrderbook[oppositePrice]!.orders.push({
-          qty: leftQty,
-          userId,
-          filledQty: 0,
-          originalOrderId,
-          reverseOrder: true,
-        });
-      }
-    }
-
-    if (data.side == "no" && data.type == "sell") {
-      const buyPrice = 100 - data.price;
-
-      const userPosition = await tx.position.findFirst({
-        where: {
-          userId: userId,
-          marketId: data.marketId,
-          type: "No",
-        },
-      });
-
-      if (!userPosition || userPosition.qty < data.qty) {
-        return;
-      }
-
-      let leftQty = data.qty;
-
-      const prices = Object.keys(yesOrderbook).sort(
-        (a: string, b: string) => Number(a) - Number(b),
-      );
-
-      for (const price of prices) {
-        if (Number(price) > buyPrice) {
-          continue;
-        }
-        const { orders } = yesOrderbook[price]!;
-
-        for (const order of orders) {
-          if (leftQty <= 0) break;
-
-          const matchedQty = order.qty >= leftQty ? leftQty : order.qty;
-          const reverseOrder = order.reverseOrder;
-          if (!reverseOrder) {
-            await tx.position.update({
-              where: {
-                userId_marketId_type: {
-                  userId: order.userId,
-                  marketId: data.marketId,
-                  type: "Yes",
-                },
-              },
-              data: {
-                qty: {
-                  decrement: matchedQty,
-                },
-              },
-            });
             await tx.user.update({
               where: {
-                id: order.userId,
+                id: userId
               },
               data: {
                 usdBalance: {
-                  increment: Number(price) * matchedQty,
-                },
-              },
-            });
-          } else {
-            await tx.position.update({
-              where: {
-                userId_marketId_type: {
-                  userId: order.userId,
-                  marketId: data.marketId,
-                  type: "No",
-                },
-              },
-              data: {
-                qty: {
-                  increment: matchedQty,
-                },
-              },
-            });
-            await tx.user.update({
-              where: {
-                id: order.userId,
-              },
-              data: {
-                usdBalance: {
-                  decrement: (100 - Number(price)) * matchedQty,
-                },
-              },
-            });
+                  decrement: Number(price) * matchedQty
+                }
+              }
+            })
+
+            leftQty -= matchedQty;
+            order.filledQty += matchedQty;
+            noOrderbook[price]!.availableQty -= matchedQty;
           }
-          await tx.position.update({
-            where: {
-              userId_marketId_type: {
-                userId,
-                marketId: data.marketId,
-                type: "No",
-              },
-            },
-            data: {
-              qty: {
-                decrement: matchedQty,
-              },
-            },
-          });
+        }
 
-          await tx.user.update({
-            where: {
-              id: userId,
-            },
-            data: {
-              usdBalance: {
-                increment: Number(price) * matchedQty,
-              },
-            },
-          });
+        if (leftQty > 0) {
+          const oppositePrice = 100 - data.price;
+          if (!yesOrderbook[oppositePrice]) {
+            yesOrderbook[oppositePrice] = { availableQty: 0, orders: [] };
+          }
 
-          leftQty -= matchedQty;
-          order.filledQty += matchedQty;
-          yesOrderbook[price]!.availableQty -= matchedQty;
+          yesOrderbook[oppositePrice]!.availableQty += leftQty;
+          yesOrderbook[oppositePrice]!.orders.push({ qty: leftQty, userId, filledQty: 0, originalOrderId, reverseOrder: true });
         }
       }
 
-      if (leftQty > 0) {
-        if (!noOrderbook[data.price]) {
-          noOrderbook[data.price] = { availableQty: 0, orders: [] };
-        }
+      if (data.side == "no" && data.type == "sell") {
+        const buyPrice = 100 - data.price;
 
-        noOrderbook[data.price]!.availableQty += leftQty;
-        noOrderbook[data.price]!.orders.push({
-          qty: leftQty,
-          userId,
-          filledQty: 0,
-          originalOrderId,
-          reverseOrder: false,
+        const userPosition = await tx.position.findFirst({
+          where: {
+            userId: userId,
+            marketId: data.marketId,
+            type: "No"
+          }
         });
-      }
-    }
 
-    await tx.orderHistory.create({
-      data: {
+        if (!userPosition || userPosition.qty < data.qty) {
+          throw new Error("Insufficient No position");
+        }
+
+        let leftQty = data.qty;
+
+        const prices = Object.keys(yesOrderbook).sort((a: string, b: string) => Number(a) - Number(b));
+
+        for (const price of prices) {
+          if (Number(price) > buyPrice) {
+            continue;
+          }
+          const { orders } = yesOrderbook[price]!;
+
+          for (const order of orders) {
+            if (leftQty <= 0) break;
+
+            const matchedQty = order.qty >= leftQty ? leftQty : order.qty;
+            const reverseOrder = order.reverseOrder;
+            if (!reverseOrder) {
+              await tx.position.update({
+                where: {
+                  userId_marketId_type: {
+                    userId: order.userId,
+                    marketId: data.marketId,
+                    type: "Yes"
+                  }
+                },
+                data: {
+                  qty: {
+                    decrement: matchedQty
+                  }
+                },
+              })
+              await tx.user.update({
+                where: {
+                  id: order.userId
+                },
+                data: {
+                  usdBalance: {
+                    increment: Number(price) * matchedQty
+                  }
+                }
+              })
+            } else {
+              await tx.position.update({
+                where: {
+                  userId_marketId_type: {
+                    userId: order.userId,
+                    marketId: data.marketId,
+                    type: "No"
+                  }
+                },
+                data: {
+                  qty: {
+                    increment: matchedQty
+                  }
+                },
+              })
+              await tx.user.update({
+                where: {
+                  id: order.userId
+                },
+                data: {
+                  usdBalance: {
+                    decrement: (100 - Number(price)) * matchedQty
+                  }
+                }
+              })
+            }
+            await tx.position.update({
+              where: {
+                userId_marketId_type: {
+                  userId,
+                  marketId: data.marketId,
+                  type: "No"
+                }
+              },
+              data: {
+                qty: {
+                  decrement: matchedQty
+                }
+              },
+            })
+
+            await tx.user.update({
+              where: {
+                id: userId
+              },
+              data: {
+                usdBalance: {
+                  increment: Number(price) * matchedQty
+                }
+              }
+            })
+
+            leftQty -= matchedQty;
+            order.filledQty += matchedQty;
+            yesOrderbook[price]!.availableQty -= matchedQty;
+          }
+        }
+
+        if (leftQty > 0) {
+          if (!noOrderbook[data.price]) {
+            noOrderbook[data.price] = { availableQty: 0, orders: [] };
+          }
+
+          noOrderbook[data.price]!.availableQty += leftQty;
+          noOrderbook[data.price]!.orders.push({ qty: leftQty, userId, filledQty: 0, originalOrderId, reverseOrder: false });
+        }
+      }
+
+      await tx.orderHistory.create({
+        data: {
           id: originalOrderId,
           orderType: data.type === "buy" ? "Buy" : "Sell",
           userId,
           price: data.price,
           qty: data.qty,
           marketId: data.marketId
-      }
-  });
-
-    tx.market.update({
-      data: {
-        yesOrderbook: JSON.stringify(yesOrderbook),
-        noOrderbook: JSON.stringify(noOrderbook),
-      },
-      where: {
-        id: data.marketId,
-      },
-    });
-  });
+        }
+      })
+      await tx.market.update({
+        data: {
+          yesOrderbook: JSON.stringify(yesOrderbook),
+          noOrderbook: JSON.stringify(noOrderbook)
+        },
+        where: {
+          id: data.marketId
+        }
+      })
+    })
+    res.json({
+      message: "Order executed successfully"
+    })
+  } catch (error: any) {
+    console.error("Error executing order:", error);
+    if (error.message === "Insufficient USD balance") {
+      res.status(403).json({
+        message: "Sorry you dont have enough $ in your account"
+      })
+    } else if (error.message === "Insufficient Yes position" || error.message === "Insufficient No position") {
+      res.status(403).json({
+        message: "Sorry you dont have enough position"
+      })
+    } else {
+      res.status(500).json({
+        message: "Error executing order"
+      })
+    }
+  }
 });
 
 app.post("/split", authMiddleware, async (req, res) => {
@@ -806,6 +792,18 @@ app.post("/merge", authMiddleware, async (req, res) => {
   });
 });
 
+app.get("/market", async (req, res) => {
+  const market = await prisma.market.findFirst({
+    where: {
+      id: req.query.marketId as string
+    }
+  });
+
+  res.json({
+    market
+  })
+})
+
 app.get("/balance", authMiddleware, async (req, res) => {
   const userId = req.userId!;
   const user = await prisma.user.findFirst({
@@ -843,6 +841,110 @@ app.post("/history", authMiddleware, async (req, res) => {
   res.json({
     history,
   });
+});
+
+app.post("/onramp", authMiddleware, async (req, res) => {
+  const { success, data } = OnrampSchema.safeParse(req.body);
+  const userId = req.userId;
+
+  if (!success) {
+    res.status(411).json({
+      message: "Incorrect inputs"
+    })
+    return;
+  }
+
+  try {
+    await prisma.$transaction(async tx => {
+      const userResponse = await tx.$queryRaw<{ id: string, address: string, usdBalance: number }[]>`SELECT * FROM "User" WHERE id=${userId} FOR UPDATE;`;
+      const user = userResponse[0];
+      if (!user) {
+        throw new Error("User not found");
+      }
+
+      // Convert USD amount to cents (integer) for storage
+      const amountInCents = Math.round(data.amount * 100);
+
+      await tx.user.update({
+        where: {
+          id: userId
+        },
+        data: {
+          usdBalance: {
+            increment: amountInCents
+          }
+        }
+      });
+
+    });
+
+    res.json({
+      message: "Onramp successful",
+      amount: data.amount
+    });
+  } catch (error: any) {
+    console.error("Error processing onramp:", error);
+    res.status(500).json({
+      message: "Error processing onramp"
+    });
+  }
+});
+
+app.post("/offramp", authMiddleware, async (req, res) => {
+  const { success, data } = OfframpSchema.safeParse(req.body);
+  const userId = req.userId;
+
+  if (!success) {
+    res.status(411).json({
+      message: "Incorrect inputs"
+    })
+    return;
+  }
+
+  try {
+    await prisma.$transaction(async tx => {
+      const userResponse = await tx.$queryRaw<{ id: string, address: string, usdBalance: number }[]>`SELECT * FROM "User" WHERE id=${userId} FOR UPDATE;`;
+      const user = userResponse[0];
+      if (!user) {
+        throw new Error("User not found");
+      }
+
+      // Convert USD amount to cents (integer) for storage
+      const amountInCents = Math.round(data.amount * 100);
+
+      if (user.usdBalance < amountInCents) {
+        throw new Error("Insufficient USD balance");
+      }
+
+      await tx.user.update({
+        where: {
+          id: userId
+        },
+        data: {
+          usdBalance: {
+            decrement: amountInCents
+          }
+        }
+      });
+
+    });
+
+    res.json({
+      message: "Offramp successful",
+      amount: data.amount
+    });
+  } catch (error: any) {
+    console.error("Error processing offramp:", error);
+    if (error.message === "Insufficient USD balance") {
+      res.status(403).json({
+        message: "Insufficient USD balance for offramp"
+      });
+    } else {
+      res.status(500).json({
+        message: "Error processing offramp"
+      });
+    }
+  }
 });
 
 app.listen(8080);

@@ -1,62 +1,49 @@
-"use client";
-import React from "react";
+"use client"
+import React, { useState } from 'react'
 import { useSupabase } from "../hooks/useSupabase";
 import { useUser } from "../hooks/useUser";
 
-declare global {
-  interface Window {
-    solflare?: any;
-  }
-}
-
-export default function Auth() {
+const Auth = () => {
   const { claims } = useUser();
   const supabase = useSupabase();
+  const [status, setStatus] = useState<string>("");
 
-  if (claims) return null;
+  const handleSignIn = async () => {
+    try {
+      setStatus("Connecting wallet...");
+      const result = await supabase.auth.signInWithWeb3({
+        chain: "solana",
+        statement: "signin with solana",
+      });
+      console.log("signInWithWeb3 result:", result);
+
+      if (result.error) {
+        console.error("Sign-in error:", result.error);
+        setStatus(`Error: ${result.error.message}`);
+      } else {
+        setStatus("Signed in! Session: " + (result.data?.session ? "yes" : "no"));
+        console.log("Session:", result.data?.session);
+        console.log("User:", result.data?.user);
+      }
+    } catch (err: any) {
+      console.error("Sign-in exception:", err);
+      setStatus(`Exception: ${err.message}`);
+    }
+  };
 
   return (
-    <div className="min-h-screen grid place-items-center p-6">
-      <div className="w-full max-w-[420px] bg-gradient-to-b from-surface-1 to-surface-0 border border-border rounded-[22px] p-8 shadow-[0_18px_44px_rgba(0,0,0,0.28)]">
-        <div className="flex items-center gap-2.5 mb-2">
-          <span className="inline-block w-2.5 h-2.5 rounded-full bg-green shadow-[0_0_0_5px_rgba(46,203,112,0.1)]" />
-          <h1 className="text-[30px] font-bold tracking-[-0.04em] text-text">
-            Polymark
-          </h1>
-        </div>
-        <p className="text-muted mb-6 text-[15px] leading-relaxed">
-          Trade live prediction markets. Sign in with your Solana wallet to get
-          started.
-        </p>
-
-        {typeof window !== "undefined" && window.solflare ? (
-          <button
-            onClick={async () => {
-              await supabase.auth.signInWithWeb3({
-                chain: "solana",
-                statement:
-                  "I accept the Terms of Service at https://example.com/tos",
-                wallet: window.solflare,
-              });
-            }}
-            className="w-full min-h-[46px] rounded-[var(--radius-md)] bg-blue text-white font-extrabold cursor-pointer transition-all duration-150 hover:bg-blue-hover hover:-translate-y-0.5 active:translate-y-0"
-          >
-            Sign in with Solflare
-          </button>
-        ) : (
-          <button
-            onClick={async () => {
-              await supabase.auth.signInWithWeb3({
-                chain: "solana",
-                statement: "signin with solana",
-              });
-            }}
-            className="w-full min-h-[46px] rounded-[var(--radius-md)] bg-blue text-white font-extrabold cursor-pointer transition-all duration-150 hover:bg-blue-hover hover:-translate-y-0.5 active:translate-y-0"
-          >
-            Sign in with Solana
-          </button>
-        )}
-      </div>
+    <div>
+      {!claims && <button onClick={handleSignIn}>
+        Signin with solana
+      </button>}
+      {status && <p style={{ marginTop: 10, color: status.startsWith("Error") || status.startsWith("Exception") ? "red" : "gray" }}>{status}</p>}
+      {claims && <button onClick={async () => {
+        await supabase.auth.signOut()
+      }}>
+        logout
+      </button>}
     </div>
   );
 }
+
+export default Auth

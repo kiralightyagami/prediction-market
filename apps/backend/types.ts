@@ -23,6 +23,14 @@ export const MergeSchema = z.object({
     amount: z.number(),
 })
 
+export const OnrampSchema = z.object({
+    amount: z.number() // amount in USD (e.g., 100.50)
+})
+
+export const OfframpSchema = z.object({
+    amount: z.number() // amount in USD (e.g., 100.50)
+})
+
 declare global {
     namespace Express {
       export interface Request {

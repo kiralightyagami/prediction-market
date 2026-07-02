@@ -13,6 +13,9 @@ import { Positions } from "./components/Positions";
 import { OrderHistory } from "./components/OrderHistory";
 import { SplitMerge } from "./components/SplitMerge";
 
+import { Button } from "#components/ui/button";
+import { Tabs, TabsList, TabsTrigger } from "#components/ui/tabs";
+
 const TABS = [
   { key: "markets", label: "Markets", needsMarket: false },
   { key: "trading", label: "Trading", needsMarket: true },
@@ -76,48 +79,45 @@ export default function Home() {
 
   return (
     <div className="w-full max-w-[1440px] mx-auto p-[22px]">
-      {/* Header */}
       <header className="flex items-center justify-between gap-[18px] mb-[18px]">
         <h1 className="text-2xl font-bold tracking-[-0.04em] flex items-center gap-2.5">
           <span className="inline-block w-2.5 h-2.5 rounded-full bg-green shadow-[0_0_0_5px_rgba(46,203,112,0.1)]" />
           Polymark
         </h1>
-        <button
-          onClick={handleSignOut}
-          className="border border-border bg-surface-1 text-text-soft rounded-[var(--radius-md)] px-3.5 py-2 cursor-pointer transition-all duration-150 hover:bg-surface-2 hover:border-[#34485d] hover:text-text"
-        >
+        <Button variant="outline" onClick={handleSignOut}>
           Logout
-        </button>
+        </Button>
       </header>
 
       {/* Tab navigation */}
-      <nav className="w-fit flex gap-1 p-1 mb-5 bg-[rgba(17,25,34,0.74)] border border-border-subtle rounded-full backdrop-blur-[10px]">
-        {TABS.map((tab) => {
-          const disabled = tab.needsMarket && !selectedMarket;
-          const active = activeTab === tab.key;
-          return (
-            <button
-              key={tab.key}
-              disabled={disabled}
-              onClick={() => {
-                if (tab.key === "markets") {
-                  setActiveTab("markets");
-                  setSelectedMarket(null);
-                } else {
-                  setActiveTab(tab.key);
-                }
-              }}
-              className={`min-h-[38px] px-[17px] rounded-full font-[750] tracking-[-0.01em] cursor-pointer transition-all duration-150
-                ${active ? "text-text bg-surface-2 shadow-[inset_0_0_0_1px_var(--color-border)]" : "text-muted bg-transparent"}
-                ${!active && !disabled ? "hover:text-text-soft hover:bg-[rgba(255,255,255,0.04)]" : ""}
-                ${disabled ? "opacity-55 cursor-not-allowed" : ""}
-              `}
-            >
-              {tab.label}
-            </button>
-          );
-        })}
-      </nav>
+      <Tabs
+        value={activeTab}
+        onValueChange={(val) => {
+          if (val === "markets") {
+            setActiveTab("markets");
+            setSelectedMarket(null);
+          } else {
+            setActiveTab(val as TabKey);
+          }
+        }}
+        className="mb-6 w-full"
+      >
+        <TabsList className="h-11">
+          {TABS.map((tab) => {
+            const disabled = tab.needsMarket && !selectedMarket;
+            return (
+              <TabsTrigger
+                key={tab.key}
+                value={tab.key}
+                disabled={disabled}
+                className="px-6 data-[state=active]:font-bold"
+              >
+                {tab.label}
+              </TabsTrigger>
+            );
+          })}
+        </TabsList>
+      </Tabs>
 
       {/* Content */}
       <main className="min-h-[560px]">

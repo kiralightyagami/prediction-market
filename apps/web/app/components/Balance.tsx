@@ -1,6 +1,18 @@
 "use client";
 import { useState, useEffect } from "react";
 import { api } from "../api/api";
+import { Button } from "#components/ui/button";
+import { Input } from "#components/ui/input";
+import { Label } from "#components/ui/label";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "#components/ui/card";
+import { Alert, AlertDescription } from "#components/ui/alert";
+import { AlertCircle, CheckCircle2 } from "lucide-react";
 
 interface BalanceProps {
   token: string;
@@ -57,56 +69,67 @@ export function Balance({ token }: BalanceProps) {
   };
 
   return (
-    <div className="p-5 bg-gradient-to-b from-surface-1 to-surface-0 border border-border-subtle rounded-[var(--radius-lg)] shadow-[0_18px_44px_rgba(0,0,0,0.28)]">
-      <h3 className="text-[28px] font-bold tracking-[-0.055em]">Balance</h3>
-
-      <div className="bg-surface-0 border border-border-subtle rounded-[var(--radius-lg)] p-6 my-4">
-        <span className="text-[40px] font-black tracking-[-0.06em]">
-          ${balance.toFixed(2)}
-        </span>
-      </div>
-
-      {error && (
-        <div className="rounded-[var(--radius-md)] px-3 py-2.5 mb-3 text-[13px] font-[750] text-red-text bg-red-bg border border-red-border">
-          {error}
-        </div>
-      )}
-      {success && (
-        <div className="rounded-[var(--radius-md)] px-3 py-2.5 mb-3 text-[13px] font-[750] text-green-text-dark bg-green-bg border border-green-border">
-          {success}
-        </div>
-      )}
-
-      <div className="grid gap-2.5">
-        <div>
-          <label className="block text-muted text-xs font-[850] mb-[7px]">
-            Amount ($):
-          </label>
-          <input
-            type="number"
-            step="0.01"
-            min="0.01"
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            className="w-full min-h-[43px] border border-border rounded-[var(--radius-md)] bg-surface-0 text-text px-3 outline-none focus:border-blue focus:shadow-[0_0_0_3px_rgba(76,141,255,0.17)] transition-all duration-150"
-          />
+    <Card className="w-full shadow-lg">
+      <CardHeader>
+        <CardTitle className="text-3xl font-bold tracking-tight">Balance</CardTitle>
+        <CardDescription>Manage your account balance</CardDescription>
+      </CardHeader>
+      
+      <CardContent className="space-y-6">
+        <div className="bg-muted/50 rounded-xl p-6 text-center border border-border">
+          <span className="text-5xl font-black tracking-tight text-primary">
+            ${balance.toFixed(2)}
+          </span>
         </div>
 
-        <button
-          onClick={handleOnramp}
-          disabled={loading}
-          className="min-h-[42px] rounded-[var(--radius-md)] bg-green text-white font-[850] cursor-pointer transition-all duration-150 hover:brightness-110 disabled:opacity-55 disabled:cursor-not-allowed"
-        >
-          {loading ? "Processing..." : "Onramp"}
-        </button>
-        <button
-          onClick={handleOfframp}
-          disabled={loading}
-          className="min-h-[42px] rounded-[var(--radius-md)] bg-red text-white font-[850] cursor-pointer transition-all duration-150 hover:brightness-110 disabled:opacity-55 disabled:cursor-not-allowed"
-        >
-          {loading ? "Processing..." : "Offramp"}
-        </button>
-      </div>
-    </div>
+        {error && (
+          <Alert variant="destructive">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription className="font-semibold">{error}</AlertDescription>
+          </Alert>
+        )}
+        {success && (
+          <Alert className="border-green-500/50 bg-green-500/10 text-green-600 dark:text-green-400">
+            <CheckCircle2 className="h-4 w-4 stroke-green-600 dark:stroke-green-400" />
+            <AlertDescription className="font-semibold">{success}</AlertDescription>
+          </Alert>
+        )}
+
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="amount" className="font-bold text-muted-foreground uppercase text-xs tracking-wider">
+              Amount ($)
+            </Label>
+            <Input
+              id="amount"
+              type="number"
+              step="0.01"
+              min="0.01"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              className="h-12 text-lg"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <Button
+              onClick={handleOnramp}
+              disabled={loading}
+              className="h-12 font-bold bg-green-600 hover:bg-green-700 text-white"
+            >
+              {loading ? "Processing..." : "Onramp"}
+            </Button>
+            <Button
+              onClick={handleOfframp}
+              disabled={loading}
+              variant="destructive"
+              className="h-12 font-bold"
+            >
+              {loading ? "Processing..." : "Offramp"}
+            </Button>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   );
 }

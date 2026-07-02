@@ -1,6 +1,6 @@
 import axios from "axios";
 
-const URL = process.env.NEXT_PUBLIC_BACKEND_URL;
+const URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
 
 export const api = {
   getMarkets: async () => {

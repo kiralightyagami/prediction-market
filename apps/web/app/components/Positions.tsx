@@ -2,6 +2,23 @@
 import { useState, useEffect } from "react";
 import { api } from "../api/api";
 import type { Market, Position } from "../types";
+import { Button } from "#components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "#components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "#components/ui/table";
+import { Badge } from "#components/ui/badge";
 
 interface PositionsProps {
   token: string;
@@ -33,76 +50,74 @@ export function Positions({ token, markets }: PositionsProps) {
 
   if (loading) {
     return (
-      <div className="p-5 bg-gradient-to-b from-surface-1 to-surface-0 border border-border-subtle rounded-[var(--radius-lg)] shadow-[0_18px_44px_rgba(0,0,0,0.28)] text-muted">
-        Loading positions...
-      </div>
+      <Card className="w-full shadow-lg">
+        <CardContent className="p-10 flex items-center justify-center text-muted-foreground font-medium">
+          Loading positions...
+        </CardContent>
+      </Card>
     );
   }
 
   return (
-    <div className="p-5 bg-gradient-to-b from-surface-1 to-surface-0 border border-border-subtle rounded-[var(--radius-lg)] shadow-[0_18px_44px_rgba(0,0,0,0.28)]">
-      <h3 className="text-[28px] font-bold tracking-[-0.055em]">
-        Your Positions
-      </h3>
-
-      {positions.length === 0 ? (
-        <p className="text-muted mt-4">No positions yet</p>
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full border-collapse mt-4">
-            <thead>
-              <tr>
-                <th className="text-muted text-[11px] uppercase tracking-[0.09em] text-left py-3 px-3 border-b border-border-subtle font-[850]">
-                  Market
-                </th>
-                <th className="text-muted text-[11px] uppercase tracking-[0.09em] text-left py-3 px-3 border-b border-border-subtle font-[850]">
-                  Type
-                </th>
-                <th className="text-muted text-[11px] uppercase tracking-[0.09em] text-left py-3 px-3 border-b border-border-subtle font-[850]">
-                  Quantity
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {positions.map((position) => (
-                <tr
-                  key={position.id}
-                  className="hover:bg-[rgba(255,255,255,0.025)] transition-colors"
-                >
-                  <td className="py-3.5 px-3 border-b border-border-subtle text-text-soft">
-                    <div className="grid gap-[3px]">
-                      <span className="text-text font-[750]">
-                        {marketTitleById.get(position.marketId) ||
-                          "Unknown market"}
-                      </span>
-                      <span className="text-muted text-xs font-mono">
-                        {position.marketId}
-                      </span>
-                    </div>
-                  </td>
-                  <td
-                    className={`py-3.5 px-3 border-b border-border-subtle font-[850] ${
-                      position.type === "Yes" ? "text-green" : "text-red"
-                    }`}
-                  >
-                    {position.type}
-                  </td>
-                  <td className="py-3.5 px-3 border-b border-border-subtle text-text-soft">
-                    {position.qty}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+    <Card className="w-full shadow-lg">
+      <CardHeader className="flex flex-row items-center justify-between pb-2">
+        <div>
+          <CardTitle className="text-3xl font-bold tracking-tight">
+            Your Positions
+          </CardTitle>
+          <CardDescription>View your active market positions</CardDescription>
         </div>
-      )}
+        <Button variant="outline" onClick={fetchPositions}>
+          Refresh
+        </Button>
+      </CardHeader>
 
-      <button
-        onClick={fetchPositions}
-        className="mt-4 border border-border bg-surface-1 text-text-soft rounded-[var(--radius-md)] px-3.5 py-2 cursor-pointer transition-all duration-150 hover:bg-surface-2 hover:border-[#34485d] hover:text-text"
-      >
-        Refresh
-      </button>
-    </div>
+      <CardContent>
+        {positions.length === 0 ? (
+          <div className="p-8 mt-4 border-2 border-dashed border-muted rounded-xl text-center text-muted-foreground font-medium bg-muted/10">
+            No positions yet
+          </div>
+        ) : (
+          <div className="rounded-md border mt-4 overflow-hidden">
+            <Table>
+              <TableHeader className="bg-muted/50">
+                <TableRow>
+                  <TableHead className="font-bold uppercase tracking-wider text-xs">Market</TableHead>
+                  <TableHead className="font-bold uppercase tracking-wider text-xs">Type</TableHead>
+                  <TableHead className="font-bold uppercase tracking-wider text-xs text-right">Quantity</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {positions.map((position) => (
+                  <TableRow key={position.id} className="hover:bg-muted/30 transition-colors">
+                    <TableCell>
+                      <div className="grid gap-1">
+                        <span className="font-bold text-base">
+                          {marketTitleById.get(position.marketId) || "Unknown market"}
+                        </span>
+                        <span className="text-muted-foreground text-xs font-mono">
+                          {position.marketId}
+                        </span>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge 
+                        variant={position.type === "Yes" ? "default" : "destructive"} 
+                        className={`font-bold ${position.type === "Yes" ? "bg-green-600 hover:bg-green-700 text-white" : ""}`}
+                      >
+                        {position.type}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right font-bold text-lg">
+                      {position.qty}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }

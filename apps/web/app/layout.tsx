@@ -1,7 +1,10 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import { Inter, Figtree } from "next/font/google";
 import localFont from "next/font/local";
 import "./globals.css";
+import { cn } from "#lib/utils";
+
+const figtree = Figtree({subsets:['latin'],variable:'--font-sans'});
 
 const inter = Inter({
   subsets: ["latin"],
@@ -29,7 +32,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" className={cn("font-sans", figtree.variable)}>
       <body
         className={`${inter.variable} ${geistSans.variable} ${geistMono.variable} font-[family-name:var(--font-inter)]`}
       >

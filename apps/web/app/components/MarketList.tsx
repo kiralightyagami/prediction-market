@@ -1,5 +1,13 @@
 "use client";
 import type { Market, Orderbook } from "../types";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "#components/ui/card";
+import { Badge } from "#components/ui/badge";
 
 interface MarketListProps {
   markets: Market[];
@@ -32,59 +40,61 @@ export function MarketList({ markets, onSelectMarket }: MarketListProps) {
   return (
     <section>
       {/* Section heading */}
-      <div className="flex items-end justify-between gap-4 mb-[18px]">
+      <div className="flex items-end justify-between gap-4 mb-6">
         <div>
-          <span className="block text-muted text-xs font-[850] uppercase tracking-[0.1em] mb-1.5">
+          <span className="block text-muted-foreground text-xs font-bold uppercase tracking-widest mb-1.5">
             Markets
           </span>
-          <h2 className="text-[28px] font-bold tracking-[-0.055em]">
+          <h2 className="text-3xl font-extrabold tracking-tight">
             Trade live prediction markets
           </h2>
         </div>
-        <span className="inline-flex items-center h-7 px-2.5 rounded-full border border-border-subtle bg-surface-1 text-muted text-xs font-extrabold">
+        <Badge variant="secondary" className="px-3 py-1 font-bold">
           {markets.length} markets
-        </span>
+        </Badge>
       </div>
 
       {markets.length === 0 ? (
-        <div className="p-7 border border-dashed border-border rounded-[var(--radius-lg)] text-muted bg-[rgba(17,25,34,0.45)]">
+        <div className="p-10 border-2 border-dashed border-muted rounded-xl text-muted-foreground text-center font-medium bg-muted/10">
           No markets available.
         </div>
       ) : (
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(310px,1fr))] gap-3.5">
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(320px,1fr))] gap-5">
           {markets.map((market) => {
             const prices = marketPrices(market);
             return (
-              <button
+              <Card
                 key={market.id}
-                className="appearance-none text-left min-h-[220px] bg-gradient-to-b from-surface-1 to-surface-0 border border-border-subtle rounded-[var(--radius-lg)] p-[18px] cursor-pointer text-text transition-all duration-150 hover:-translate-y-0.5 hover:border-[#3a5066] hover:from-surface-2 hover:to-surface-1"
+                className="cursor-pointer transition-all hover:-translate-y-1 hover:shadow-xl hover:border-primary/50 flex flex-col h-full bg-gradient-to-b from-card to-card/50"
                 onClick={() => onSelectMarket(market.id)}
               >
-                <div className="flex justify-between gap-2.5 mb-[18px]">
-                  <span className="inline-flex items-center h-7 px-2.5 rounded-full border border-green-border bg-green-bg text-green-text-alt text-xs font-extrabold">
-                    Open
-                  </span>
-                  <span className="inline-flex items-center h-7 px-2.5 rounded-full border border-border-subtle bg-surface-1 text-muted text-xs font-extrabold">
-                    {market.totalQty.toLocaleString()} shares
-                  </span>
-                </div>
-
-                <h3 className="text-lg leading-[1.3] tracking-[-0.03em] mb-2 font-semibold">
-                  {market.title}
-                </h3>
-                <p className="text-muted text-sm leading-relaxed">
-                  {market.description}
-                </p>
-
-                <div className="grid grid-cols-2 gap-2 mt-[18px]">
-                  <span className="flex justify-center items-center min-h-[38px] rounded-[var(--radius-md)] font-[850] text-sm text-green-text bg-green-bg border border-green-border">
-                    Yes {formatCents(prices.yes)}
-                  </span>
-                  <span className="flex justify-center items-center min-h-[38px] rounded-[var(--radius-md)] font-[850] text-sm text-red-text bg-red-bg border border-red-border">
-                    No {formatCents(prices.no)}
-                  </span>
-                </div>
-              </button>
+                <CardHeader className="pb-3 flex-1">
+                  <div className="flex justify-between items-center gap-2 mb-3">
+                    <Badge variant="default" className="bg-green-600 hover:bg-green-600 text-white font-bold">
+                      Open
+                    </Badge>
+                    <Badge variant="outline" className="text-muted-foreground font-semibold">
+                      {market.totalQty.toLocaleString()} shares
+                    </Badge>
+                  </div>
+                  <CardTitle className="text-xl leading-tight font-bold">
+                    {market.title}
+                  </CardTitle>
+                  <CardDescription className="line-clamp-2 mt-2">
+                    {market.description}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="mt-auto pt-0">
+                  <div className="grid grid-cols-2 gap-3 mt-2">
+                    <div className="flex justify-center items-center h-12 rounded-lg font-bold text-sm bg-green-500/10 text-green-700 border border-green-500/20 dark:text-green-400">
+                      Yes {formatCents(prices.yes)}
+                    </div>
+                    <div className="flex justify-center items-center h-12 rounded-lg font-bold text-sm bg-red-500/10 text-red-700 border border-red-500/20 dark:text-red-400">
+                      No {formatCents(prices.no)}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
             );
           })}
         </div>

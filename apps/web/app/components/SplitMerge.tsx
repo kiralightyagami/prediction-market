@@ -2,6 +2,24 @@
 import { useState } from "react";
 import { api } from "../api/api";
 import type { Market } from "../types";
+import { Button } from "#components/ui/button";
+import { Input } from "#components/ui/input";
+import { Label } from "#components/ui/label";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "#components/ui/card";
+import { Alert, AlertDescription } from "#components/ui/alert";
+import { AlertCircle, CheckCircle2 } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "#components/ui/select";
 
 interface SplitMergeProps {
   markets?: Market[];
@@ -65,90 +83,89 @@ export function SplitMerge({
   };
 
   return (
-    <section className="bg-gradient-to-b from-surface-1 to-surface-0 border border-border-subtle rounded-[var(--radius-lg)] shadow-[0_18px_44px_rgba(0,0,0,0.28)] overflow-hidden">
-      {/* Header */}
-      <div className="flex justify-between items-start gap-3.5 p-4 border-b border-border-subtle">
-        <div>
-          <span className="block text-muted text-[11px] font-[850] uppercase tracking-[0.095em] mb-[7px]">
-            Market actions
-          </span>
-          <h3 className="text-[17px] leading-[1.28] tracking-[-0.035em] font-semibold">
-            Split / Merge
-          </h3>
-        </div>
-        <span className="text-muted text-[11px] font-[850] uppercase tracking-[0.095em]">
-          {selectedMarketTitle || "Select market"}
-        </span>
-      </div>
-
-      <div className="px-4 pb-4">
-        {/* Messages */}
-        {error && (
-          <div className="rounded-[var(--radius-md)] px-3 py-2.5 mt-4 text-[13px] font-[750] text-red-text bg-red-bg border border-red-border">
-            {error}
+    <Card className="w-full shadow-lg border-2 border-primary/10 mt-4">
+      <CardHeader className="pb-4 border-b bg-muted/20">
+        <div className="flex justify-between items-start gap-3">
+          <div>
+            <span className="block text-muted-foreground text-[11px] font-bold uppercase tracking-widest mb-1">
+              Market actions
+            </span>
+            <CardTitle className="text-lg leading-tight font-bold">
+              Split / Merge
+            </CardTitle>
           </div>
+          <span className="text-primary text-[11px] font-black uppercase tracking-widest py-1 px-2 bg-primary/10 rounded-full line-clamp-1 max-w-[120px]" title={selectedMarketTitle || "Select market"}>
+            {selectedMarketTitle || "Select market"}
+          </span>
+        </div>
+      </CardHeader>
+
+      <CardContent className="pt-4 space-y-4">
+        {error && (
+          <Alert variant="destructive">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription className="font-semibold">{error}</AlertDescription>
+          </Alert>
         )}
         {success && (
-          <div className="rounded-[var(--radius-md)] px-3 py-2.5 mt-4 text-[13px] font-[750] text-green-text-dark bg-green-bg border border-green-border">
-            {success}
-          </div>
+          <Alert className="border-green-500/50 bg-green-500/10 text-green-600 dark:text-green-400">
+            <CheckCircle2 className="h-4 w-4 stroke-green-600 dark:stroke-green-400" />
+            <AlertDescription className="font-semibold">{success}</AlertDescription>
+          </Alert>
         )}
 
-        {/* Market selector (only when not in a specific market) */}
         {!market && (
-          <div className="mt-4">
-            <label className="block text-muted text-xs font-[850] mb-[7px]">
+          <div className="space-y-1.5">
+            <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
               Market
-            </label>
-            <select
-              value={marketId}
-              onChange={(e) => setMarketId(e.target.value)}
-              className="w-full min-h-[43px] border border-border rounded-[var(--radius-md)] bg-surface-0 text-text px-3 outline-none focus:border-blue focus:shadow-[0_0_0_3px_rgba(76,141,255,0.17)] transition-all duration-150"
-            >
-              <option value="">Select a market</option>
-              {markets.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.title}
-                </option>
-              ))}
-            </select>
+            </Label>
+            <Select value={marketId} onValueChange={setMarketId}>
+              <SelectTrigger className="h-11 font-medium">
+                <SelectValue placeholder="Select a market" />
+              </SelectTrigger>
+              <SelectContent>
+                {markets.map((item) => (
+                  <SelectItem key={item.id} value={item.id}>
+                    {item.title}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         )}
 
-        {/* Quantity input */}
-        <div className="mt-4">
-          <label className="block text-muted text-xs font-[850] mb-[7px]">
+        <div className="space-y-1.5">
+          <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
             Quantity
-          </label>
-          <input
+          </Label>
+          <Input
             type="number"
             min="1"
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
-            className="w-full min-h-[43px] border border-border rounded-[var(--radius-md)] bg-surface-0 text-text px-3 outline-none focus:border-blue focus:shadow-[0_0_0_3px_rgba(76,141,255,0.17)] transition-all duration-150"
+            className="h-11 font-medium"
           />
         </div>
 
-        {/* Actions */}
-        <div className="grid grid-cols-2 gap-2 mt-4">
-          <button
-            type="button"
+        <div className="grid grid-cols-2 gap-3 pt-2">
+          <Button
+            variant="outline"
             onClick={() => runAction("split")}
             disabled={loading || !token}
-            className="min-h-[42px] rounded-[var(--radius-md)] bg-surface-2 text-text-soft border border-border font-[850] cursor-pointer transition-all duration-150 hover:text-green-text hover:bg-green-bg disabled:opacity-55 disabled:cursor-not-allowed"
+            className="h-12 font-bold hover:bg-green-600 hover:text-white border-muted-foreground/30"
           >
             Split
-          </button>
-          <button
-            type="button"
+          </Button>
+          <Button
+            variant="outline"
             onClick={() => runAction("merge")}
             disabled={loading || !token}
-            className="min-h-[42px] rounded-[var(--radius-md)] bg-surface-2 text-text-soft border border-border font-[850] cursor-pointer transition-all duration-150 hover:text-blue-text hover:bg-blue-bg disabled:opacity-55 disabled:cursor-not-allowed"
+            className="h-12 font-bold hover:bg-blue-600 hover:text-white border-muted-foreground/30"
           >
             Merge
-          </button>
+          </Button>
         </div>
-      </div>
-    </section>
+      </CardContent>
+    </Card>
   );
 }
